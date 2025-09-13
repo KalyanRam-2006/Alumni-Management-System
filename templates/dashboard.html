@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Welcome, {{ user }}!</h2>
+
+<div class="card p-3 mt-3">
+    <h5>Announcements</h5>
+    {% if announcements %}
+        <ul class="list-group mt-2">
+            {% for ann in announcements %}
+            <li class="list-group-item">
+                <strong>{{ ann[1] }}</strong><br>{{ ann[2] }}
+            </li>
+            {% endfor %}
+        </ul>
+    {% else %}
+        <p class="text-muted">No announcements yet.</p>
+    {% endif %}
+</div>
+{% endblock %}

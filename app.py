@@ -25,6 +25,13 @@ def init_db():
                         username TEXT UNIQUE,
                         password TEXT
                     )''')
+    
+    # Announcements Table
+    cursor.execute('''CREATE TABLE IF NOT EXISTS announcements (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    title TEXT,
+                    message TEXT
+                )''')   
 
     # Insert default admin if not exists
     cursor.execute("SELECT * FROM admin WHERE username='admin'")
@@ -79,7 +86,12 @@ def login():
 @app.route("/dashboard")
 def dashboard():
     if "user" in session:
-        return f"Welcome {session['user']} to Alumni Dashboard!"
+        conn = sqlite3.connect("database.db")
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM announcements ORDER BY id DESC")
+        announcements = cursor.fetchall()
+        conn.close()
+        return render_template("dashboard.html", user=session["user"], announcements=announcements)
     else:
         return redirect(url_for("login"))
   
@@ -134,6 +146,27 @@ def admin_dashboard():
     conn.close()
 
     return render_template("admin_dashboard.html", alumni_list=alumni_list)
+
+@app.route("/admin-announcements", methods=["GET", "POST"])
+def admin_announcements():
+    if "admin" not in session:
+        return redirect(url_for("admin_login"))
+
+    conn = sqlite3.connect("database.db")
+    cursor = conn.cursor()
+
+    if request.method == "POST":
+        title = request.form["title"]
+        message = request.form["message"]
+        cursor.execute("INSERT INTO announcements (title, message) VALUES (?, ?)", (title, message))
+        conn.commit()
+
+    cursor.execute("SELECT * FROM announcements ORDER BY id DESC")
+    announcements = cursor.fetchall()
+    conn.close()
+
+    return render_template("admin_announcements.html", announcements=announcements)
+
 
 if __name__ == "__main__":
     init_db()
