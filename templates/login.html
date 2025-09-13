@@ -1,9 +1,11 @@
 {% extends "base.html" %}
 {% block content %}
-    <h2>Alumni Login</h2>
+<div class="card p-4">
+    <h3 class="mb-3">Alumni Login</h3>
     <form method="POST">
         <input type="email" name="email" placeholder="Email" class="form-control mb-2" required>
         <input type="password" name="password" placeholder="Password" class="form-control mb-2" required>
-        <button type="submit" class="btn btn-success">Login</button>
+        <button type="submit" class="btn btn-success w-100">Login</button>
     </form>
+</div>
 {% endblock %}

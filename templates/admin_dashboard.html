@@ -1,21 +1,26 @@
 {% extends "base.html" %}
 {% block content %}
-    <h2>Admin Dashboard</h2>
+<h2 class="mb-3">Admin Dashboard</h2>
 
-    <form method="POST" class="row g-2 mb-3">
-        <div class="col-md-4">
+<div class="card p-3 mb-4">
+    <h5>Search Alumni</h5>
+    <form method="POST" class="row g-2">
+        <div class="col-md-5">
             <input type="text" name="batch" placeholder="Batch (e.g. 2020)" class="form-control">
         </div>
-        <div class="col-md-4">
+        <div class="col-md-5">
             <input type="text" name="branch" placeholder="Branch (e.g. CSE)" class="form-control">
         </div>
-        <div class="col-md-4">
-            <button type="submit" class="btn btn-primary">Search</button>
+        <div class="col-md-2">
+            <button type="submit" class="btn btn-primary w-100">Search</button>
         </div>
     </form>
+</div>
 
-    <table class="table table-bordered table-striped">
-        <thead>
+<div class="card p-3">
+    <h5>Alumni List</h5>
+    <table class="table table-hover mt-3">
+        <thead class="table-dark">
             <tr>
                 <th>ID</th>
                 <th>Name</th>
@@ -36,4 +41,5 @@
             {% endfor %}
         </tbody>
     </table>
+</div>
 {% endblock %}
