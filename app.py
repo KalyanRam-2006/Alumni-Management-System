@@ -8,6 +8,8 @@ app.secret_key = "supersecretkey"  # needed for session handling
 def init_db():
     conn = sqlite3.connect("database.db")
     cursor = conn.cursor()
+
+    # Alumni Table
     cursor.execute('''CREATE TABLE IF NOT EXISTS alumni (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         name TEXT,
@@ -16,6 +18,19 @@ def init_db():
                         batch TEXT,
                         branch TEXT
                     )''')
+
+    # Admin Table
+    cursor.execute('''CREATE TABLE IF NOT EXISTS admin (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        username TEXT UNIQUE,
+                        password TEXT
+                    )''')
+
+    # Insert default admin if not exists
+    cursor.execute("SELECT * FROM admin WHERE username='admin'")
+    if not cursor.fetchone():
+        cursor.execute("INSERT INTO admin (username, password) VALUES (?, ?)", ("admin", "admin123"))
+
     conn.commit()
     conn.close()
 
@@ -67,6 +82,58 @@ def dashboard():
         return f"Welcome {session['user']} to Alumni Dashboard!"
     else:
         return redirect(url_for("login"))
+  
+@app.route("/admin-login", methods=["GET", "POST"])
+def admin_login():
+    if request.method == "POST":
+        username = request.form["username"]
+        password = request.form["password"]
+
+        conn = sqlite3.connect("database.db")
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM admin WHERE username=? AND password=?", (username, password))
+        admin = cursor.fetchone()
+        conn.close()
+
+        if admin:
+            session["admin"] = username
+            return redirect(url_for("admin_dashboard"))
+        else:
+            return "Invalid Admin Credentials!"
+    return render_template("admin_login.html")
+
+
+@app.route("/admin-dashboard", methods=["GET", "POST"])
+def admin_dashboard():
+    if "admin" not in session:
+        return redirect(url_for("admin_login"))
+
+    conn = sqlite3.connect("database.db")
+    cursor = conn.cursor()
+
+    # Search & Filter
+    query = "SELECT * FROM alumni"
+    filters = []
+    params = []
+
+    if request.method == "POST":
+        batch = request.form.get("batch")
+        branch = request.form.get("branch")
+        if batch:
+            filters.append("batch=?")
+            params.append(batch)
+        if branch:
+            filters.append("branch=?")
+            params.append(branch)
+
+        if filters:
+            query += " WHERE " + " AND ".join(filters)
+
+    cursor.execute(query, params)
+    alumni_list = cursor.fetchall()
+    conn.close()
+
+    return render_template("admin_dashboard.html", alumni_list=alumni_list)
 
 if __name__ == "__main__":
     init_db()

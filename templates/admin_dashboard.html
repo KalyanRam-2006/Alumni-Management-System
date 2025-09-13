@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+    <h2>Admin Dashboard</h2>
+
+    <form method="POST" class="row g-2 mb-3">
+        <div class="col-md-4">
+            <input type="text" name="batch" placeholder="Batch (e.g. 2020)" class="form-control">
+        </div>
+        <div class="col-md-4">
+            <input type="text" name="branch" placeholder="Branch (e.g. CSE)" class="form-control">
+        </div>
+        <div class="col-md-4">
+            <button type="submit" class="btn btn-primary">Search</button>
+        </div>
+    </form>
+
+    <table class="table table-bordered table-striped">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Batch</th>
+                <th>Branch</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for alumni in alumni_list %}
+            <tr>
+                <td>{{ alumni[0] }}</td>
+                <td>{{ alumni[1] }}</td>
+                <td>{{ alumni[2] }}</td>
+                <td>{{ alumni[4] }}</td>
+                <td>{{ alumni[5] }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+{% endblock %}
