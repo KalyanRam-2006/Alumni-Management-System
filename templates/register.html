@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block content %}
+    <h2>Alumni Registration</h2>
+    <form method="POST">
+        <input type="text" name="name" placeholder="Full Name" class="form-control mb-2" required>
+        <input type="email" name="email" placeholder="Email" class="form-control mb-2" required>
+        <input type="password" name="password" placeholder="Password" class="form-control mb-2" required>
+        <input type="text" name="batch" placeholder="Batch (e.g., 2020)" class="form-control mb-2">
+        <input type="text" name="branch" placeholder="Branch (e.g., CSE)" class="form-control mb-2">
+        <button type="submit" class="btn btn-primary">Register</button>
+    </form>
+{% endblock %}
