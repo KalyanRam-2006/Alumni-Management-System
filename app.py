@@ -60,6 +60,13 @@ def init_db():
                         batch TEXT,
                         branch TEXT
                     )''')
+    # Add columns for work_experience and achievements if not exist
+    cursor.execute("PRAGMA table_info(alumni)")
+    columns = [col[1] for col in cursor.fetchall()]
+    if "work_experience" not in columns:
+        cursor.execute("ALTER TABLE alumni ADD COLUMN work_experience TEXT")
+    if "achievements" not in columns:
+        cursor.execute("ALTER TABLE alumni ADD COLUMN achievements TEXT")
 
     # Admin Table
     cursor.execute('''CREATE TABLE IF NOT EXISTS admin (
@@ -75,24 +82,6 @@ def init_db():
                     message TEXT
                 )''')   
 
-    # Events Table
-    cursor.execute('''CREATE TABLE IF NOT EXISTS events (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    title TEXT,
-                    description TEXT,
-                    date TEXT,
-                    created_by TEXT
-                )''')
-
-    # RSVP Table
-    cursor.execute('''CREATE TABLE IF NOT EXISTS rsvp (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    event_id INTEGER,
-                    alumni_id INTEGER,
-                    FOREIGN KEY(event_id) REFERENCES events(id),
-                    FOREIGN KEY(alumni_id) REFERENCES alumni(id)
-                )''')
-
     # Insert default admin if not exists
     cursor.execute("SELECT * FROM admin WHERE username='admin'")
     if not cursor.fetchone():
@@ -100,68 +89,6 @@ def init_db():
 
     conn.commit()
     conn.close()
-# List all events
-@app.route("/events", methods=["GET", "POST"])
-def events():
-    conn = sqlite3.connect("database.db")
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM events ORDER BY date ASC")
-    events_list = cursor.fetchall()
-
-    rsvp_status = {}
-    if "user" in session:
-        # Get alumni id
-        cursor.execute("SELECT id FROM alumni WHERE name=?", (session["user"],))
-        alumni = cursor.fetchone()
-        if alumni:
-            alumni_id = alumni[0]
-            cursor.execute("SELECT event_id FROM rsvp WHERE alumni_id=?", (alumni_id,))
-            rsvp_events = [row[0] for row in cursor.fetchall()]
-            rsvp_status = {eid: True for eid in rsvp_events}
-
-    conn.close()
-    return render_template("events.html", events=events_list, rsvp_status=rsvp_status)
-
-# Create a new event (admin only)
-@app.route("/create_event", methods=["GET", "POST"])
-def create_event():
-    if "admin" not in session:
-        return redirect(url_for("admin_login"))
-    if request.method == "POST":
-        title = request.form["title"].strip()
-        description = request.form["description"].strip()
-        date = request.form["date"].strip()
-        created_by = session["admin"]
-        if not title or not description or not date:
-            flash("All fields are required.")
-            return render_template("create_event.html")
-        conn = sqlite3.connect("database.db")
-        cursor = conn.cursor()
-        cursor.execute("INSERT INTO events (title, description, date, created_by) VALUES (?, ?, ?, ?)",
-                       (title, description, date, created_by))
-        conn.commit()
-        conn.close()
-        return redirect(url_for("events"))
-    return render_template("create_event.html")
-
-# RSVP to an event (alumni only)
-@app.route("/rsvp/<int:event_id>", methods=["POST"])
-def rsvp_event(event_id):
-    if "user" not in session:
-        return redirect(url_for("login"))
-    conn = sqlite3.connect("database.db")
-    cursor = conn.cursor()
-    cursor.execute("SELECT id FROM alumni WHERE name=?", (session["user"],))
-    alumni = cursor.fetchone()
-    if alumni:
-        alumni_id = alumni[0]
-        # Prevent duplicate RSVP
-        cursor.execute("SELECT * FROM rsvp WHERE event_id=? AND alumni_id=?", (event_id, alumni_id))
-        if not cursor.fetchone():
-            cursor.execute("INSERT INTO rsvp (event_id, alumni_id) VALUES (?, ?)", (event_id, alumni_id))
-            conn.commit()
-    conn.close()
-    return redirect(url_for("events"))
 
 @app.route("/")
 def index():
@@ -216,7 +143,8 @@ def login():
         conn.close()
 
         if user and check_password_hash(user[3], password):
-            session["user"] = user[1]  # store name in session
+            session["user_id"] = user[0]  # store user id in session
+            session["user"] = user[1]    # store name for display
             return redirect(url_for("dashboard"))
         else:
             flash("Invalid Credentials!")
@@ -225,15 +153,51 @@ def login():
 
 @app.route("/dashboard")
 def dashboard():
-    if "user" in session:
+    if "user_id" in session:
         conn = sqlite3.connect("database.db")
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM announcements ORDER BY id DESC")
         announcements = cursor.fetchall()
         conn.close()
-        return render_template("dashboard.html", user=session["user"], announcements=announcements)
+        return render_template("dashboard.html", user=session.get("user"), announcements=announcements)
     else:
         return redirect(url_for("login"))
+    # Profile route: view and edit user profile
+    @app.route("/profile/<int:user_id>", methods=["GET", "POST"])
+    def profile(user_id):
+        conn = sqlite3.connect("database.db")
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, name, email, batch, branch, work_experience, achievements FROM alumni WHERE id=?", (user_id,))
+        user = cursor.fetchone()
+
+        if not user:
+            conn.close()
+            return "User not found", 404
+
+        # Only allow editing if logged in and viewing own profile
+        can_edit = False
+        if "user_id" in session and session["user_id"] == user_id:
+            can_edit = True
+            if request.method == "POST":
+                name = request.form["name"].strip()
+                email = request.form["email"].strip()
+                batch = request.form["batch"].strip()
+                branch = request.form["branch"].strip()
+                work_experience = request.form["work_experience"].strip()
+                achievements = request.form["achievements"].strip()
+                # Basic validation
+                if not name or not email:
+                    flash("Name and Email are required.")
+                else:
+                    cursor.execute("UPDATE alumni SET name=?, email=?, batch=?, branch=?, work_experience=?, achievements=? WHERE id=?",
+                                   (name, email, batch, branch, work_experience, achievements, user_id))
+                    conn.commit()
+                    # Refresh user data
+                    cursor.execute("SELECT id, name, email, batch, branch, work_experience, achievements FROM alumni WHERE id=?", (user_id,))
+                    user = cursor.fetchone()
+                    flash("Profile updated successfully.")
+        conn.close()
+        return render_template("profile.html", user=user, can_edit=can_edit)
   
 @app.route("/admin-login", methods=["GET", "POST"])
 def admin_login():
