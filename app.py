@@ -1,8 +1,50 @@
-from flask import Flask, render_template, request, redirect, url_for, session
+from flask import Flask, render_template, request, redirect, url_for, session, flash
 import sqlite3
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
 app.secret_key = "supersecretkey"  # needed for session handling
+
+# Admin-only user management route
+@app.route("/admin", methods=["GET", "POST"])
+def admin_panel():
+    # Only allow access if logged in as admin
+    if "admin" not in session:
+        return redirect(url_for("admin_login"))
+
+    conn = sqlite3.connect("database.db")
+    cursor = conn.cursor()
+
+    # Approve or delete user actions
+    if request.method == "POST":
+        user_id = request.form.get("user_id")
+        action = request.form.get("action")
+        if user_id and action:
+            if action == "approve":
+                # Add 'approved' column if not exists
+                cursor.execute("PRAGMA table_info(alumni)")
+                columns = [col[1] for col in cursor.fetchall()]
+                if "approved" not in columns:
+                    cursor.execute("ALTER TABLE alumni ADD COLUMN approved INTEGER DEFAULT 0")
+                    conn.commit()
+                cursor.execute("UPDATE alumni SET approved=1 WHERE id=?", (user_id,))
+                conn.commit()
+            elif action == "delete":
+                cursor.execute("DELETE FROM alumni WHERE id=?", (user_id,))
+                conn.commit()
+
+    # Ensure 'approved' column exists for display
+    cursor.execute("PRAGMA table_info(alumni)")
+    columns = [col[1] for col in cursor.fetchall()]
+    if "approved" not in columns:
+        cursor.execute("ALTER TABLE alumni ADD COLUMN approved INTEGER DEFAULT 0")
+        conn.commit()
+
+    cursor.execute("SELECT id, name, email, batch, branch, approved FROM alumni")
+    users = cursor.fetchall()
+    conn.close()
+
+    return render_template("admin.html", users=users)
 
 # Database setup
 def init_db():
@@ -33,6 +75,24 @@ def init_db():
                     message TEXT
                 )''')   
 
+    # Events Table
+    cursor.execute('''CREATE TABLE IF NOT EXISTS events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    title TEXT,
+                    description TEXT,
+                    date TEXT,
+                    created_by TEXT
+                )''')
+
+    # RSVP Table
+    cursor.execute('''CREATE TABLE IF NOT EXISTS rsvp (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    event_id INTEGER,
+                    alumni_id INTEGER,
+                    FOREIGN KEY(event_id) REFERENCES events(id),
+                    FOREIGN KEY(alumni_id) REFERENCES alumni(id)
+                )''')
+
     # Insert default admin if not exists
     cursor.execute("SELECT * FROM admin WHERE username='admin'")
     if not cursor.fetchone():
@@ -40,6 +100,68 @@ def init_db():
 
     conn.commit()
     conn.close()
+# List all events
+@app.route("/events", methods=["GET", "POST"])
+def events():
+    conn = sqlite3.connect("database.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM events ORDER BY date ASC")
+    events_list = cursor.fetchall()
+
+    rsvp_status = {}
+    if "user" in session:
+        # Get alumni id
+        cursor.execute("SELECT id FROM alumni WHERE name=?", (session["user"],))
+        alumni = cursor.fetchone()
+        if alumni:
+            alumni_id = alumni[0]
+            cursor.execute("SELECT event_id FROM rsvp WHERE alumni_id=?", (alumni_id,))
+            rsvp_events = [row[0] for row in cursor.fetchall()]
+            rsvp_status = {eid: True for eid in rsvp_events}
+
+    conn.close()
+    return render_template("events.html", events=events_list, rsvp_status=rsvp_status)
+
+# Create a new event (admin only)
+@app.route("/create_event", methods=["GET", "POST"])
+def create_event():
+    if "admin" not in session:
+        return redirect(url_for("admin_login"))
+    if request.method == "POST":
+        title = request.form["title"].strip()
+        description = request.form["description"].strip()
+        date = request.form["date"].strip()
+        created_by = session["admin"]
+        if not title or not description or not date:
+            flash("All fields are required.")
+            return render_template("create_event.html")
+        conn = sqlite3.connect("database.db")
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO events (title, description, date, created_by) VALUES (?, ?, ?, ?)",
+                       (title, description, date, created_by))
+        conn.commit()
+        conn.close()
+        return redirect(url_for("events"))
+    return render_template("create_event.html")
+
+# RSVP to an event (alumni only)
+@app.route("/rsvp/<int:event_id>", methods=["POST"])
+def rsvp_event(event_id):
+    if "user" not in session:
+        return redirect(url_for("login"))
+    conn = sqlite3.connect("database.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM alumni WHERE name=?", (session["user"],))
+    alumni = cursor.fetchone()
+    if alumni:
+        alumni_id = alumni[0]
+        # Prevent duplicate RSVP
+        cursor.execute("SELECT * FROM rsvp WHERE event_id=? AND alumni_id=?", (event_id, alumni_id))
+        if not cursor.fetchone():
+            cursor.execute("INSERT INTO rsvp (event_id, alumni_id) VALUES (?, ?)", (event_id, alumni_id))
+            conn.commit()
+    conn.close()
+    return redirect(url_for("events"))
 
 @app.route("/")
 def index():
@@ -48,18 +170,30 @@ def index():
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "POST":
-        name = request.form["name"]
-        email = request.form["email"]
+        name = request.form["name"].strip()
+        email = request.form["email"].strip()
         password = request.form["password"]
-        batch = request.form["batch"]
-        branch = request.form["branch"]
+        batch = request.form["batch"].strip()
+        branch = request.form["branch"].strip()
 
-        conn = sqlite3.connect("database.db")
-        cursor = conn.cursor()
-        cursor.execute("INSERT INTO alumni (name, email, password, batch, branch) VALUES (?, ?, ?, ?, ?)",
-                       (name, email, password, batch, branch))
-        conn.commit()
-        conn.close()
+        # Input validation
+        if not name or not email or not password:
+            flash("Name, Email, and Password are required.")
+            return render_template("register.html")
+
+        hashed_password = generate_password_hash(password)
+
+        try:
+            conn = sqlite3.connect("database.db")
+            cursor = conn.cursor()
+            cursor.execute("INSERT INTO alumni (name, email, password, batch, branch) VALUES (?, ?, ?, ?, ?)",
+                           (name, email, hashed_password, batch, branch))
+            conn.commit()
+        except sqlite3.IntegrityError:
+            flash("Email already registered.")
+            return render_template("register.html")
+        finally:
+            conn.close()
 
         return redirect(url_for("login"))
     return render_template("register.html")
@@ -67,20 +201,26 @@ def register():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        email = request.form["email"]
+        email = request.form["email"].strip()
         password = request.form["password"]
+
+        # Input validation
+        if not email or not password:
+            flash("Email and Password are required.")
+            return render_template("login.html")
 
         conn = sqlite3.connect("database.db")
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM alumni WHERE email=? AND password=?", (email, password))
+        cursor.execute("SELECT * FROM alumni WHERE email=?", (email,))
         user = cursor.fetchone()
         conn.close()
 
-        if user:
+        if user and check_password_hash(user[3], password):
             session["user"] = user[1]  # store name in session
             return redirect(url_for("dashboard"))
         else:
-            return "Invalid Credentials!"
+            flash("Invalid Credentials!")
+            return render_template("login.html")
     return render_template("login.html")
 
 @app.route("/dashboard")
