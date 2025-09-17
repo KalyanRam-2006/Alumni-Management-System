@@ -162,42 +162,43 @@ def dashboard():
         return render_template("dashboard.html", user=session.get("user"), announcements=announcements)
     else:
         return redirect(url_for("login"))
-    # Profile route: view and edit user profile
-    @app.route("/profile/<int:user_id>", methods=["GET", "POST"])
-    def profile(user_id):
-        conn = sqlite3.connect("database.db")
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, name, email, batch, branch, work_experience, achievements FROM alumni WHERE id=?", (user_id,))
-        user = cursor.fetchone()
 
-        if not user:
-            conn.close()
-            return "User not found", 404
+# Profile route: view and edit user profile
+@app.route("/profile/<int:user_id>", methods=["GET", "POST"])
+def profile(user_id):
+    conn = sqlite3.connect("database.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, name, email, batch, branch, work_experience, achievements FROM alumni WHERE id=?", (user_id,))
+    user = cursor.fetchone()
 
-        # Only allow editing if logged in and viewing own profile
-        can_edit = False
-        if "user_id" in session and session["user_id"] == user_id:
-            can_edit = True
-            if request.method == "POST":
-                name = request.form["name"].strip()
-                email = request.form["email"].strip()
-                batch = request.form["batch"].strip()
-                branch = request.form["branch"].strip()
-                work_experience = request.form["work_experience"].strip()
-                achievements = request.form["achievements"].strip()
-                # Basic validation
-                if not name or not email:
-                    flash("Name and Email are required.")
-                else:
-                    cursor.execute("UPDATE alumni SET name=?, email=?, batch=?, branch=?, work_experience=?, achievements=? WHERE id=?",
-                                   (name, email, batch, branch, work_experience, achievements, user_id))
-                    conn.commit()
-                    # Refresh user data
-                    cursor.execute("SELECT id, name, email, batch, branch, work_experience, achievements FROM alumni WHERE id=?", (user_id,))
-                    user = cursor.fetchone()
-                    flash("Profile updated successfully.")
+    if not user:
         conn.close()
-        return render_template("profile.html", user=user, can_edit=can_edit)
+        return "User not found", 404
+
+    # Only allow editing if logged in and viewing own profile
+    can_edit = False
+    if "user_id" in session and session["user_id"] == user_id:
+        can_edit = True
+        if request.method == "POST":
+            name = request.form["name"].strip()
+            email = request.form["email"].strip()
+            batch = request.form["batch"].strip()
+            branch = request.form["branch"].strip()
+            work_experience = request.form["work_experience"].strip()
+            achievements = request.form["achievements"].strip()
+            # Basic validation
+            if not name or not email:
+                flash("Name and Email are required.")
+            else:
+                cursor.execute("UPDATE alumni SET name=?, email=?, batch=?, branch=?, work_experience=?, achievements=? WHERE id=?",
+                               (name, email, batch, branch, work_experience, achievements, user_id))
+                conn.commit()
+                # Refresh user data
+                cursor.execute("SELECT id, name, email, batch, branch, work_experience, achievements FROM alumni WHERE id=?", (user_id,))
+                user = cursor.fetchone()
+                flash("Profile updated successfully.")
+    conn.close()
+    return render_template("profile.html", user=user, can_edit=can_edit)
   
 @app.route("/admin-login", methods=["GET", "POST"])
 def admin_login():
@@ -227,8 +228,32 @@ def admin_dashboard():
     conn = sqlite3.connect("database.db")
     cursor = conn.cursor()
 
+    # Approve or delete user actions
+    if request.method == "POST":
+        user_id = request.form.get("user_id")
+        action = request.form.get("action")
+        if user_id and action:
+            if action == "approve":
+                cursor.execute("PRAGMA table_info(alumni)")
+                columns = [col[1] for col in cursor.fetchall()]
+                if "approved" not in columns:
+                    cursor.execute("ALTER TABLE alumni ADD COLUMN approved INTEGER DEFAULT 0")
+                    conn.commit()
+                cursor.execute("UPDATE alumni SET approved=1 WHERE id=?", (user_id,))
+                conn.commit()
+            elif action == "delete":
+                cursor.execute("DELETE FROM alumni WHERE id=?", (user_id,))
+                conn.commit()
+
+    # Ensure 'approved' column exists for display
+    cursor.execute("PRAGMA table_info(alumni)")
+    columns = [col[1] for col in cursor.fetchall()]
+    if "approved" not in columns:
+        cursor.execute("ALTER TABLE alumni ADD COLUMN approved INTEGER DEFAULT 0")
+        conn.commit()
+
     # Search & Filter
-    query = "SELECT * FROM alumni"
+    query = "SELECT id, name, email, batch, branch, approved FROM alumni"
     filters = []
     params = []
 

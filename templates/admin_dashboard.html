@@ -27,6 +27,8 @@
                 <th>Email</th>
                 <th>Batch</th>
                 <th>Branch</th>
+                <th>Status</th>
+                <th>Actions</th>
             </tr>
         </thead>
         <tbody>
@@ -35,8 +37,23 @@
                 <td>{{ alumni[0] }}</td>
                 <td>{{ alumni[1] }}</td>
                 <td>{{ alumni[2] }}</td>
+                <td>{{ alumni[3] }}</td>
                 <td>{{ alumni[4] }}</td>
-                <td>{{ alumni[5] }}</td>
+                <td>{% if alumni[5] == 1 %}Approved{% else %}Pending{% endif %}</td>
+                <td>
+                    {% if alumni[5] != 1 %}
+                    <form method="post" style="display:inline;">
+                        <input type="hidden" name="user_id" value="{{ alumni[0] }}">
+                        <input type="hidden" name="action" value="approve">
+                        <button type="submit" class="btn btn-success btn-sm">Approve</button>
+                    </form>
+                    {% endif %}
+                    <form method="post" style="display:inline;">
+                        <input type="hidden" name="user_id" value="{{ alumni[0] }}">
+                        <input type="hidden" name="action" value="delete">
+                        <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                    </form>
+                </td>
             </tr>
             {% endfor %}
         </tbody>

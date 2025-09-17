@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 {% block content %}
+
 <h2>Welcome, {{ user }}!</h2>
+<a href="{{ url_for('profile', user_id=session['user_id']) }}" class="btn btn-primary mb-3">View Profile</a>
 
 <div class="card p-3 mt-3">
     <h5>Announcements</h5>
